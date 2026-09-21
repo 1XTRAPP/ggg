@@ -1,24 +1,11 @@
 /* =====================================================
-   ÇOKLU KAYNAKLI API - FOOTEO + BETBETTER + FOOTBALLCHARTS
-   Tam çalışan, test edilmiş sürüm
+   ÇOKLU KAYNAKLI API - FOOTEO + BZZOIRO (BSD)
+   Bzzoiro: CatBoost ML tahminleri, 30+ lig, ücretsiz
 ===================================================== */
 
 const FOOTEO_URL = "https://footeoplay.com/tr/picks";
-const BETBETTER_BASE = "https://betbetter.world";
-const FOOTBALLCHARTS_BASE = "https://footballcharts-backend.onrender.com/api/v1";
-
-// BetBetter futbol ligleri (doğru slug'lar)
-const BETBETTER_SOCCER_LEAGUES = [
-  "soccer/epl",
-  "soccer/la-liga",
-  "soccer/serie-a",
-  "soccer/bundesliga",
-  "soccer/ligue-1",
-  "soccer/world-cup"
-];
-
-// FootballCharts lig anahtarları (doğru slug'lar)
-const FOOTBALLCHARTS_LEAGUES = ["premier", "spain1", "italy1", "germany1", "france1"];
+const BZZOIRO_BASE = "https://sports.bzzoiro.com/api/v2";
+const BZZOIRO_TOKEN = process.env.BZZOIRO_TOKEN; // Vercel ortam değişkeni
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
@@ -26,11 +13,10 @@ export default async function handler(req, res) {
   const allPicks = [];
   const debug = {
     footeo: { status: "pending", count: 0, error: null },
-    betbetter: { status: "pending", count: 0, error: null, leagues: {} },
-    footballcharts: { status: "pending", count: 0, error: null, leagues: {} }
+    bzzoiro: { status: "pending", count: 0, error: null }
   };
 
-  // 1. Footeo
+  // 1. Footeo (kapalı olsa bile denenir)
   try {
     const footeoPicks = await fetchFooteo();
     allPicks.push(...footeoPicks);
@@ -39,38 +25,13 @@ export default async function handler(req, res) {
     debug.footeo = { status: "error", count: 0, error: e.message };
   }
 
-  // 2. BetBetter
+  // 2. Bzzoiro (CatBoost ML tahminleri)
   try {
-    const betbetterPicks = await fetchBetBetter();
-    allPicks.push(...betbetterPicks);
-    debug.betbetter = {
-      status: "success",
-      count: betbetterPicks.length,
-      error: null,
-      leagues: betbetterPicks.reduce((acc, p) => {
-        acc[p.league] = (acc[p.league] || 0) + 1;
-        return acc;
-      }, {})
-    };
+    const bzzoiroPicks = await fetchBzzoiro();
+    allPicks.push(...bzzoiroPicks);
+    debug.bzzoiro = { status: "success", count: bzzoiroPicks.length, error: null };
   } catch (e) {
-    debug.betbetter = { status: "error", count: 0, error: e.message, leagues: {} };
-  }
-
-  // 3. FootballCharts
-  try {
-    const fcPicks = await fetchFootballCharts();
-    allPicks.push(...fcPicks);
-    debug.footballcharts = {
-      status: "success",
-      count: fcPicks.length,
-      error: null,
-      leagues: fcPicks.reduce((acc, p) => {
-        acc[p.league] = (acc[p.league] || 0) + 1;
-        return acc;
-      }, {})
-    };
-  } catch (e) {
-    debug.footballcharts = { status: "error", count: 0, error: e.message, leagues: {} };
+    debug.bzzoiro = { status: "error", count: 0, error: e.message };
   }
 
   const unique = removeDuplicates(allPicks);
@@ -86,7 +47,7 @@ export default async function handler(req, res) {
 
 
 /* =====================================================
-   1. FOOTEO PARSER
+   1. FOOTEO PARSER (Mevcut, Çalışıyor)
 ===================================================== */
 
 async function fetchFooteo() {
@@ -160,148 +121,71 @@ function parseFooteo(html) {
 
 
 /* =====================================================
-   2. BETBETTER (Doğrulanmış API - Kayıt gerekmez)
-   Endpoint: https://betbetter.world/{lig}/picks?format=json
+   2. BZZOIRO SPORTS DATA (CatBoost ML Tahminleri)
+   Kaynak: https://sports.bzzoiro.com/api/
+   Endpoint: GET /api/v2/predictions/?upcoming=true
 ===================================================== */
 
-async function fetchBetBetter() {
-  const allPicks = [];
-
-  for (const league of BETBETTER_SOCCER_LEAGUES) {
-    try {
-      const res = await fetch(`${BETBETTER_BASE}/${league}/picks?format=json`, {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (compatible; MacKuponlari/1.0)"
-        },
-        cache: "no-store"
-      });
-
-      if (!res.ok) {
-        console.warn(`BetBetter ${league}: HTTP ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
-      const picks = data.picks || [];
-
-      picks.forEach(pick => {
-        const game = pick.game || "";
-        let home = "", away = "";
-
-        // "Away @ Home" formatını ayrıştır
-        if (game.includes("@")) {
-          const parts = game.split("@").map(s => s.trim());
-          away = parts[0] || "";
-          home = parts[1] || "";
-        }
-
-        if (!home || !away) return;
-
-        // Sadece "Head to Head" (1X2) marketini al
-        if (pick.market && pick.market !== "Head to Head") return;
-
-        const confMap = { "HIGH": 85, "LEAN": 70, "LONG-SHOT": 55 };
-        const confidence = pick.modelProbabilityPct ||
-                          confMap[pick.confidence] || 55;
-
-        allPicks.push({
-          id: `betbetter_${league}_${home}_${away}`.replace(/[\s/]+/g, "_"),
-          source: "betbetter",
-          league: league.replace("soccer/", "").toUpperCase().replace("-", " "),
-          home: home,
-          away: away,
-          homeLogo: "",
-          awayLogo: "",
-          time: pick.gameTimeUtc ? new Date(pick.gameTimeUtc).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : "",
-          kickoff: pick.gameTimeUtc || "",
-          tip: pick.selection || "",
-          odds: String(pick.fairOdds || ""),
-          prob: Math.round(confidence),
-          confidence: Math.round(confidence),
-          analysis: pick.verdict || `BetBetter model: ${pick.selection} (${pick.confidence})`,
-          isHero: pick.confidence === "HIGH",
-          today: true
-        });
-      });
-
-    } catch (e) {
-      console.error(`BetBetter ${league} hatası:`, e.message);
-    }
+async function fetchBzzoiro() {
+  if (!BZZOIRO_TOKEN) {
+    console.warn("BZZOIRO_TOKEN tanımlı değil, atlanıyor");
+    return [];
   }
 
-  return allPicks;
-}
+  const res = await fetch(`${BZZOIRO_BASE}/predictions/?upcoming=true`, {
+    headers: {
+      "Authorization": `Token ${BZZOIRO_TOKEN}`,
+      "Accept": "application/json",
+      "User-Agent": "Mozilla/5.0 (compatible; MacKuponlari/1.0)"
+    },
+    cache: "no-store"
+  });
 
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const predictions = data.results || [];
 
-/* =====================================================
-   3. FOOTBALLCHARTS (Doğrulanmış API - Kayıt gerekmez)
-   Endpoint: /api/v1/leagues/{league}/fixtures/
-===================================================== */
+  return predictions.map(p => {
+    const event = p.event || {};
+    const home = event.home_team || "";
+    const away = event.away_team || "";
+    if (!home || !away) return null;
 
-async function fetchFootballCharts() {
-  const allPicks = [];
+    // En yüksek olasılıklı sonucu seç
+    const probs = {
+      "Home": p.prob_home_win || 0,
+      "Draw": p.prob_draw || 0,
+      "Away": p.prob_away_win || 0
+    };
+    let tip = "Home", maxProb = probs.Home;
+    if (probs.Draw > maxProb) { tip = "Draw"; maxProb = probs.Draw; }
+    if (probs.Away > maxProb) { tip = "Away"; maxProb = probs.Away; }
 
-  for (const league of FOOTBALLCHARTS_LEAGUES) {
-    try {
-      const res = await fetch(`${FOOTBALLCHARTS_BASE}/leagues/${league}/fixtures/`, {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (compatible; MacKuponlari/1.0)"
-        },
-        cache: "no-store"
-      });
+    // Adil oran = 100 / olasılık
+    const fairOdds = maxProb > 0 ? (100 / maxProb).toFixed(2) : "";
 
-      if (!res.ok) {
-        console.warn(`FootballCharts ${league}: HTTP ${res.status}`);
-        continue;
-      }
+    // Güven yüzdesi (0-100)
+    const confidence = Math.round(maxProb);
 
-      const data = await res.json();
-      const fixtures = data.matches || [];
-
-      fixtures.forEach(fx => {
-        const home = fx.home_team || fx.homeTeam || "";
-        const away = fx.away_team || fx.awayTeam || "";
-        if (!home || !away) return;
-
-        const probs = fx.probabilities || fx.model_probabilities || {};
-        const homeWin = probs.home_win || probs.home || 0;
-        const draw = probs.draw || 0;
-        const awayWin = probs.away_win || probs.away || 0;
-
-        let tip = "Home", maxProb = homeWin;
-        if (draw > maxProb) { tip = "Draw"; maxProb = draw; }
-        if (awayWin > maxProb) { tip = "Away"; maxProb = awayWin; }
-
-        const fairOdds = maxProb > 0 ? (100 / maxProb).toFixed(2) : "";
-
-        allPicks.push({
-          id: `footballcharts_${league}_${home}_${away}`.replace(/[\s/]+/g, "_"),
-          source: "footballcharts",
-          league: league.toUpperCase(),
-          home: home,
-          away: away,
-          homeLogo: "",
-          awayLogo: "",
-          time: fx.kickoff_time || fx.time || "",
-          kickoff: fx.kickoff_utc || fx.date || "",
-          tip: tip,
-          odds: fairOdds,
-          prob: Math.round(maxProb),
-          confidence: Math.round(maxProb),
-          analysis: `FootballCharts model: ${tip} (${Math.round(maxProb)}%)`,
-          isHero: maxProb >= 80,
-          today: true
-        });
-      });
-
-    } catch (e) {
-      console.error(`FootballCharts ${league} hatası:`, e.message);
-    }
-  }
-
-  return allPicks;
+    return {
+      id: `bzzoiro_${p.id}`,
+      source: "bzzoiro",
+      league: event.league?.name || "Bzzoiro",
+      home: home,
+      away: away,
+      homeLogo: event.home_team_obj?.logo || "",
+      awayLogo: event.away_team_obj?.logo || "",
+      time: event.event_date ? new Date(event.event_date).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : "",
+      kickoff: event.event_date || "",
+      tip: tip,
+      odds: fairOdds,
+      prob: confidence,
+      confidence: confidence,
+      analysis: `CatBoost ML modeli: ${tip} (${confidence}%) - En olası skor: ${p.most_likely_score || "-"}`,
+      isHero: confidence >= 80,
+      today: true
+    };
+  }).filter(Boolean);
 }
 
 
