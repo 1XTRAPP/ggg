@@ -1,24 +1,23 @@
 /* =====================================================
    ÇOKLU KAYNAKLI API - FOOTEO + BETBETTER + FOOTBALLCHARTS
-   + WinFulltime (Scraping)
 ===================================================== */
 
 const FOOTEO_URL = "https://footeoplay.com/tr/picks";
 const BETBETTER_BASE = "https://betbetter.world";
 const FOOTBALLCHARTS_BASE = "https://footballcharts-backend.onrender.com/api/v1";
-const WINFULLTIME_URL = "https://winfulltime.com/predictions";
 
-// BetBetter'daki futbol ligleri (kaynak: https://betbetter.world/api/)
-const BETBETTER_SOCCER_LEAGUES = ["epl", "la-liga", "serie-a", "bundesliga", "ligue-1", "world-cup"];
-
-// FootballCharts'daki futbol ligleri (kaynak: https://footballcharts-backend.onrender.com/api/v1/)
-const FOOTBALLCHARTS_LEAGUES = [
-  "england/premier-league",
-  "spain/la-liga",
-  "italy/serie-a",
-  "germany/bundesliga",
-  "france/ligue-1"
+// BetBetter futbol ligleri
+const BETBETTER_SOCCER_LEAGUES = [
+  "soccer/epl",
+  "soccer/la-liga",
+  "soccer/serie-a",
+  "soccer/bundesliga",
+  "soccer/ligue-1",
+  "soccer/world-cup"
 ];
+
+// FootballCharts lig anahtarları (list_leagues'ten alınan doğrulanmış slug'lar)
+const FOOTBALLCHARTS_LEAGUES = ["premier", "spain1", "italy1", "germany1", "france1"];
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
@@ -28,12 +27,11 @@ export default async function handler(req, res) {
   const results = await Promise.allSettled([
     fetchFooteo(),
     fetchBetBetter(),
-    fetchFootballCharts(),
-    fetchWinFulltime()
+    fetchFootballCharts()
   ]);
 
   results.forEach((result, i) => {
-    const sourceName = ["footeo", "betbetter", "footballcharts", "winfulltime"][i];
+    const sourceName = ["footeo", "betbetter", "footballcharts"][i];
     if (result.status === "fulfilled") {
       allPicks.push(...result.value);
       console.log(`✅ ${sourceName}: ${result.value.length} maç`);
@@ -51,8 +49,7 @@ export default async function handler(req, res) {
     sources: {
       footeo: allPicks.filter(p => p.source === "footeo").length,
       betbetter: allPicks.filter(p => p.source === "betbetter").length,
-      footballcharts: allPicks.filter(p => p.source === "footballcharts").length,
-      winfulltime: allPicks.filter(p => p.source === "winfulltime").length
+      footballcharts: allPicks.filter(p => p.source === "footballcharts").length
     },
     picks: unique
   });
@@ -60,22 +57,27 @@ export default async function handler(req, res) {
 
 
 /* =====================================================
-   1. FOOTEO PARSER (Mevcut, Çalışıyor)
+   1. FOOTEO PARSER
 ===================================================== */
 
 async function fetchFooteo() {
-  const res = await fetch(FOOTEO_URL, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
-    },
-    cache: "no-store"
-  });
+  try {
+    const res = await fetch(FOOTEO_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
+      },
+      cache: "no-store"
+    });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
-  return parseFooteo(html);
+    if (!res.ok) return [];
+    const html = await res.text();
+    return parseFooteo(html);
+  } catch (e) {
+    console.error("Footeo hatası:", e.message);
+    return [];
+  }
 }
 
 function parseFooteo(html) {
@@ -161,6 +163,7 @@ async function fetchBetBetter() {
       const picks = data.picks || [];
 
       picks.forEach(pick => {
+        // "game" alanı "Away @ Home" formatındadır
         const game = pick.game || "";
         let home = "", away = "";
 
@@ -172,6 +175,10 @@ async function fetchBetBetter() {
 
         if (!home || !away) return;
 
+        // Sadece "Head to Head" marketini al (1X2)
+        if (pick.market && pick.market !== "Head to Head") return;
+
+        // Güven derecesini yüzdeye çevir
         const confMap = { "HIGH": 85, "LEAN": 70, "LONG-SHOT": 55 };
         const confidence = pick.modelProbabilityPct ||
                           confMap[pick.confidence] || 55;
@@ -179,7 +186,7 @@ async function fetchBetBetter() {
         allPicks.push({
           id: `betbetter_${league}_${home}_${away}`.replace(/[\s/]+/g, "_"),
           source: "betbetter",
-          league: league.toUpperCase().replace("-", " "),
+          league: league.replace("soccer/", "").toUpperCase().replace("-", " "),
           home: home,
           away: away,
           homeLogo: "",
@@ -230,7 +237,7 @@ async function fetchFootballCharts() {
       }
 
       const data = await res.json();
-      const fixtures = data.fixtures || data.matches || [];
+      const fixtures = data.matches || [];
 
       fixtures.forEach(fx => {
         const home = fx.home_team || fx.homeTeam || "";
@@ -251,7 +258,7 @@ async function fetchFootballCharts() {
         allPicks.push({
           id: `footballcharts_${league}_${home}_${away}`.replace(/[\s/]+/g, "_"),
           source: "footballcharts",
-          league: league.split("/")[1].toUpperCase().replace("-", " "),
+          league: league.toUpperCase(),
           home: home,
           away: away,
           homeLogo: "",
@@ -274,102 +281,6 @@ async function fetchFootballCharts() {
   }
 
   return allPicks;
-}
-
-
-/* =====================================================
-   4. WINFULLTIME (Scraping - HTML yapısı doğrulanmalı)
-===================================================== */
-
-async function fetchWinFulltime() {
-  try {
-    const res = await fetch(WINFULLTIME_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9"
-      },
-      cache: "no-store"
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-    return parseWinFulltime(html);
-  } catch (e) {
-    console.error("WinFulltime hatası:", e.message);
-    return [];
-  }
-}
-
-function parseWinFulltime(html) {
-  const picks = [];
-
-  const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
-  let match;
-  while ((match = jsonLdRegex.exec(html)) !== null) {
-    try {
-      const data = JSON.parse(match[1]);
-      if (data.itemListElement || data["@type"] === "ItemList") {
-        const items = data.itemListElement || [];
-        items.forEach(item => {
-          if (item.name && item.name.includes(" vs ")) {
-            const [home, away] = item.name.split(" vs ").map(s => s.trim());
-            picks.push({
-              id: `winfulltime_${home}_${away}`.replace(/\s+/g, "_"),
-              source: "winfulltime",
-              league: item.description || "WinFulltime",
-              home: home,
-              away: away,
-              homeLogo: "",
-              awayLogo: "",
-              time: "",
-              kickoff: "",
-              tip: item.prediction || "",
-              odds: "",
-              prob: 60,
-              confidence: 60,
-              analysis: item.description || "WinFulltime AI tahmini",
-              isHero: false,
-              today: true
-            });
-          }
-        });
-      }
-    } catch (e) { /* JSON parse hatası, devam et */ }
-  }
-
-  const matchCardRegex = /<div[^>]*class="[^"]*match[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g;
-  let cardMatch;
-  while ((cardMatch = matchCardRegex.exec(html)) !== null) {
-    const card = cardMatch[1];
-    const teamsMatch = card.match(/([A-Za-zÀ-ÿ\s]+)\s*(?:vs|v)\s*([A-Za-zÀ-ÿ\s]+)/);
-    if (teamsMatch) {
-      const home = teamsMatch[1].trim();
-      const away = teamsMatch[2].trim();
-      if (home && away && home.length < 40 && away.length < 40) {
-        picks.push({
-          id: `winfulltime_${home}_${away}`.replace(/\s+/g, "_"),
-          source: "winfulltime",
-          league: "WinFulltime",
-          home: home,
-          away: away,
-          homeLogo: "",
-          awayLogo: "",
-          time: "",
-          kickoff: "",
-          tip: "Home",
-          odds: "",
-          prob: 60,
-          confidence: 60,
-          analysis: "WinFulltime AI tahmini",
-          isHero: false,
-          today: true
-        });
-      }
-    }
-  }
-
-  return picks;
 }
 
 
