@@ -1,11 +1,10 @@
 /* =====================================================
-   ÇOKLU KAYNAKLI API - FOOTEO + BZZOIRO (BSD)
-   Bzzoiro: CatBoost ML tahminleri, 30+ lig, ücretsiz
+   API - FOOTEO + BZZOIRO (CatBoost ML Tahminleri)
 ===================================================== */
 
 const FOOTEO_URL = "https://footeoplay.com/tr/picks";
 const BZZOIRO_BASE = "https://sports.bzzoiro.com/api/v2";
-const BZZOIRO_TOKEN = process.env.BZZOIRO_TOKEN; // Vercel ortam değişkeni
+const BZZOIRO_TOKEN = process.env.BZZOIRO_TOKEN;
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
@@ -16,7 +15,7 @@ export default async function handler(req, res) {
     bzzoiro: { status: "pending", count: 0, error: null }
   };
 
-  // 1. Footeo (kapalı olsa bile denenir)
+  // 1. Footeo
   try {
     const footeoPicks = await fetchFooteo();
     allPicks.push(...footeoPicks);
@@ -25,7 +24,7 @@ export default async function handler(req, res) {
     debug.footeo = { status: "error", count: 0, error: e.message };
   }
 
-  // 2. Bzzoiro (CatBoost ML tahminleri)
+  // 2. Bzzoiro
   try {
     const bzzoiroPicks = await fetchBzzoiro();
     allPicks.push(...bzzoiroPicks);
@@ -47,7 +46,7 @@ export default async function handler(req, res) {
 
 
 /* =====================================================
-   1. FOOTEO PARSER (Mevcut, Çalışıyor)
+   FOOTEO PARSER
 ===================================================== */
 
 async function fetchFooteo() {
@@ -121,9 +120,7 @@ function parseFooteo(html) {
 
 
 /* =====================================================
-   2. BZZOIRO SPORTS DATA (CatBoost ML Tahminleri)
-   Kaynak: https://sports.bzzoiro.com/api/
-   Endpoint: GET /api/v2/predictions/?upcoming=true
+   BZZOIRO SPORTS DATA (CatBoost ML Tahminleri)
 ===================================================== */
 
 async function fetchBzzoiro() {
@@ -151,7 +148,6 @@ async function fetchBzzoiro() {
     const away = event.away_team || "";
     if (!home || !away) return null;
 
-    // En yüksek olasılıklı sonucu seç
     const probs = {
       "Home": p.prob_home_win || 0,
       "Draw": p.prob_draw || 0,
@@ -161,10 +157,7 @@ async function fetchBzzoiro() {
     if (probs.Draw > maxProb) { tip = "Draw"; maxProb = probs.Draw; }
     if (probs.Away > maxProb) { tip = "Away"; maxProb = probs.Away; }
 
-    // Adil oran = 100 / olasılık
     const fairOdds = maxProb > 0 ? (100 / maxProb).toFixed(2) : "";
-
-    // Güven yüzdesi (0-100)
     const confidence = Math.round(maxProb);
 
     return {
@@ -181,7 +174,7 @@ async function fetchBzzoiro() {
       odds: fairOdds,
       prob: confidence,
       confidence: confidence,
-      analysis: `CatBoost ML modeli: ${tip} (${confidence}%) - En olası skor: ${p.most_likely_score || "-"}`,
+      analysis: `CatBoost ML: ${tip} (${confidence}%) - Skor: ${p.most_likely_score || "-"}`,
       isHero: confidence >= 80,
       today: true
     };
@@ -190,7 +183,7 @@ async function fetchBzzoiro() {
 
 
 /* =====================================================
-   YARDIMCI: Tekrarları temizle
+   YARDIMCI
 ===================================================== */
 
 function removeDuplicates(picks) {
