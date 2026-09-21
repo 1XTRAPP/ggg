@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080b14">
+<meta name="description" content="Günün ücretsiz maç tahminleri ve kuponları">
+<title>Günün Ücretsiz Maç Kuponları</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- DUYURU BAR -->
+<div id="announcementBar" class="announcement-bar">
+  <div class="announcement-track">
+    <span id="announcementText">📢 Güncel maç tahminleri her sabah 09:00'da yenilenir · 🔥 Bugünün banko maçları için takipte kalın · ⚽ XTV verileriyle otomatik güncellenir ·</span>
+    <span id="announcementText2"></span>
+  </div>
+  <button id="announcementClose" class="announcement-close" type="button">✕</button>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-container">
+    <div class="logo-area">
+      <div class="logo-icon">⚽</div>
+      <div class="logo-text">
+        <div class="logo-title" data-i18n="title">MAÇ KUPONLARI</div>
+        <div class="logo-subtitle" data-i18n="subtitle">ÜCRETSİZ MAÇ TAHMİNLERİ</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="notifBtn" class="icon-button" type="button" title="Bildirim">
+        <span class="notif-icon">🔔</span>
+      </button>
+      <button id="langToggle" class="icon-button" type="button" title="Dil">
+        <span class="lang-label">TR</span>
+      </button>
+      <button id="themeToggle" class="icon-button" type="button" title="Tema">
+        <span class="theme-icon">🌙</span>
+      </button>
+      <button id="refreshButton" class="refresh-button" type="button">
+        <span class="refresh-icon">↻</span>
+        <span data-i18n="refresh">YENİLE</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-container">
+    <div class="hero-badge" data-i18n="heroBadge">🔥 GÜNÜN TAHMİNLERİ</div>
+    <h1>
+      <span data-i18n="heroTitle">Günün Ücretsiz</span>
+      <span class="gradient" data-i18n="heroTitleSpan">Maç Kuponları</span>
+    </h1>
+    <p data-i18n="heroDesc">Güncel maç tahminlerini, oranları ve güven yüzdelerini tek yerde görüntüle.</p>
+    <div class="hero-info">
+      <div class="info-box"><div class="info-icon">📅</div><div><small data-i18n="date">TARİH</small><strong id="todayDate">-</strong></div></div>
+      <div class="info-box"><div class="info-icon">🔄</div><div><small data-i18n="status">DURUM</small><strong id="dataStatus">...</strong></div></div>
+      <div class="info-box"><div class="info-icon">⚽</div><div><small data-i18n="prediction">TAHMİN</small><strong id="matchCount">-</strong></div></div>
+    </div>
+    <button id="randomMatchBtn" class="random-btn" type="button">
+      <span>🎰</span> <span data-i18n="randomMatch">Şansıma Bir Maç</span>
+    </button>
+  </div>
+</section>
+
+<!-- MAIN -->
+<main class="main-container">
+
+  <div class="status-bar">
+    <div class="status-left">
+      <span id="statusIndicator" class="status-indicator loading"></span>
+      <span id="statusMessage" data-i18n="loadingData">Veriler yükleniyor...</span>
+    </div>
+    <div id="lastUpdate" class="last-update">-</div>
+  </div>
+
+  <!-- ROZETLER -->
+  <section class="badges-panel">
+    <div class="badges-title">🏅 <span data-i18n="badgesTitle">Rozetlerin</span></div>
+    <div id="badgesGrid" class="badges-grid"></div>
+  </section>
+
+  <!-- TOP 3 KUPON -->
+  <section id="topPicksSection" class="top-picks-panel" style="display:none;">
+    <div class="top-picks-title">
+      <span class="top-picks-icon">🏆</span>
+      <span data-i18n="topPicksTitle">Günün En İyi 3 Kuponu</span>
+    </div>
+    <div id="topPicksGrid" class="top-picks-grid"></div>
+  </section>
+
+  <!-- İSTATİSTİK PANELİ -->
+  <section class="stats-panel">
+    <div class="stats-title" data-i18n="statsTitle">📊 Günün İstatistikleri</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label" data-i18n="statTotal">Toplam Maç</div></div>
+      <div class="stat-card stat-banko"><div class="stat-value" id="statBanko">0</div><div class="stat-label" data-i18n="statBanko">Banko</div></div>
+      <div class="stat-card stat-high"><div class="stat-value" id="statHigh">0</div><div class="stat-label" data-i18n="statHigh">Yüksek Güven</div></div>
+      <div class="stat-card stat-conf"><div class="stat-value" id="statAvgConf">%0</div><div class="stat-label" data-i18n="statAvgConf">Ort. Güven</div></div>
+      <div class="stat-card stat-odds"><div class="stat-value" id="statAvgOdds">0.00</div><div class="stat-label" data-i18n="statAvgOdds">Ort. Oran</div></div>
+      <div class="stat-card stat-value-bet"><div class="stat-value" id="statValue">0</div><div class="stat-label" data-i18n="statValue">Değer Bahis</div></div>
+    </div>
+  </section>
+
+  <!-- GRAFİK -->
+  <section class="chart-panel">
+    <div class="chart-title" data-i18n="chartTitle">📈 Güven Dağılımı</div>
+    <div class="chart-bars" id="chartBars"></div>
+  </section>
+
+  <!-- LİG BAZLI İSTATİSTİK -->
+  <section class="league-stats-panel">
+    <div class="league-stats-title" data-i18n="leagueStatsTitle">📊 Lig Bazlı İstatistik</div>
+    <div id="leagueStatsGrid" class="league-stats-grid"></div>
+  </section>
+
+  <!-- FİLTRE BUTONLARI -->
+  <div class="filter-section">
+    <button class="filter-button active" data-filter="all" type="button" data-i18n="filterAll">🏆 TÜMÜ</button>
+    <button class="filter-button" data-filter="banko" type="button" data-i18n="filterBanko">🔥 BANKO</button>
+    <button class="filter-button" data-filter="high" type="button" data-i18n="filterHigh">⭐ %75+</button>
+    <button class="filter-button" data-filter="value" type="button" data-i18n="filterValue">💎 DEĞER</button>
+    <button class="filter-button" data-filter="risky" type="button" data-i18n="filterRisky">🎲 RİSKLİ</button>
+    <button class="filter-button" data-filter="today" type="button" data-i18n="filterToday">📅 BUGÜN</button>
+    <button class="filter-button" data-filter="favorites" type="button">
+      <span data-i18n="filterFav">❤️ FAVORİLER</span>
+      <span id="favCount" class="fav-count"></span>
+    </button>
+  </div>
+
+  <!-- SELECT FİLTRELER -->
+  <div class="selects-row">
+    <select id="leagueSelect" class="custom-select">
+      <option value="all" data-i18n="leagueAll">Tüm Ligler</option>
+    </select>
+    <select id="timeSelect" class="custom-select">
+      <option value="all" data-i18n="timeAll">Tüm Saatler</option>
+      <option value="morning" data-i18n="timeMorning">Sabah (00-12)</option>
+      <option value="afternoon" data-i18n="timeAfternoon">Öğleden Sonra (12-18)</option>
+      <option value="evening" data-i18n="timeEvening">Akşam (18-24)</option>
+    </select>
+    <select id="sortSelect" class="custom-select">
+      <option value="default" data-i18n="sortDefault">Sıralama: Varsayılan</option>
+      <option value="confHigh" data-i18n="sortConfHigh">Güven ↓</option>
+      <option value="confLow" data-i18n="sortConfLow">Güven ↑</option>
+      <option value="oddsHigh" data-i18n="sortOddsHigh">Oran ↓</option>
+      <option value="oddsLow" data-i18n="sortOddsLow">Oran ↑</option>
+      <option value="time" data-i18n="sortTime">Saat (Erken→Geç)</option>
+    </select>
+  </div>
+
+  <div class="search-area">
+    <div class="search-box">
+      <span class="search-icon">🔎</span>
+      <input type="text" id="searchInput" placeholder="Takım veya lig ara..." autocomplete="off" data-i18n-placeholder="searchPlaceholder">
+    </div>
+  </div>
+
+  <div class="section-title">
+    <div>
+      <span class="section-icon">🔥</span>
+      <h2 data-i18n="sectionTitle">Günün Kuponları</h2>
+    </div>
+    <span id="resultCount" class="result-count">0 MAÇ</span>
+  </div>
+
+  <section id="couponContainer" class="coupon-grid">
+    <div class="loading-card">
+      <div class="loading-spinner">⚽</div>
+      <h3>...</h3>
+    </div>
+  </section>
+
+  <div id="noResults" class="no-results" style="display:none;">
+    <div class="no-results-icon">🔎</div>
+    <h3 data-i18n="noResult">Tahmin bulunamadı</h3>
+    <p data-i18n="noResultDesc">Arama veya filtre kriterlerini değiştirin.</p>
+  </div>
+
+  <section class="information">
+    <div class="information-icon">ℹ️</div>
+    <div>
+      <h3 data-i18n="info">Bilgilendirme</h3>
+      <p data-i18n="infoDesc">Bu sayfa yalnızca maç tahminlerini bilgilendirme amacıyla gösterir. Tahminler kesin sonuç veya kazanç garantisi değildir.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-container">
+    <div class="footer-logo">⚽ MAÇ KUPONLARI</div>
+    <p data-i18n="footerDesc">Günlük ücretsiz maç tahminleri</p>
+    <div class="footer-line"></div>
+    <small data-i18n="footerCopy">© 2026 Maç Kuponları</small>
+  </div>
+</footer>
+
+<!-- FLOATING ACTION BUTTONS -->
+<div class="fab-container">
+  <button id="fabCoupon" class="fab-btn" type="button" title="Kupon Oluşturucu">
+    <span>🎯</span>
+    <span id="fabCouponCount" class="fab-badge">0</span>
+  </button>
+  <button id="fabCompare" class="fab-btn" type="button" title="Karşılaştır">
+    <span>⚖️</span>
+    <span id="fabCompareCount" class="fab-badge">0</span>
+  </button>
+  <button id="fabScrollTop" class="fab-btn" type="button" title="Yukarı">
+    <span>↑</span>
+  </button>
+</div>
+
+<!-- KUPON OLUŞTURUCU PANEL -->
+<div id="couponBuilder" class="coupon-builder">
+  <div class="cb-header">
+    <div class="cb-title">🎯 <span data-i18n="couponBuilderTitle">Kupon Oluşturucu</span></div>
+    <div class="cb-actions">
+      <button id="cbClear" class="cb-btn" type="button" data-i18n="couponClear">Temizle</button>
+      <button id="cbClose" class="cb-btn" type="button">✕</button>
+    </div>
+  </div>
+  <div id="cbList" class="cb-list"></div>
+  <div class="cb-footer">
+    <div class="cb-summary">
+      <div><span data-i18n="cbTotalOdds">Toplam Oran:</span> <strong id="cbTotalOdds">0.00</strong></div>
+      <div><span data-i18n="cbTotalConf">Ort. Güven:</span> <strong id="cbTotalConf">%0</strong></div>
+    </div>
+    <button id="cbShare" class="cb-share-btn" type="button">
+      📤 <span data-i18n="cbShare">Kuponu Paylaş</span>
+    </button>
+  </div>
+</div>
+
+<!-- KARŞILAŞTIRMA PANEL -->
+<div id="comparePanel" class="compare-panel">
+  <div class="compare-header">
+    <span class="compare-title">
+      <span>⚖️</span>
+      <span data-i18n="compareTitle">Maç Karşılaştırma</span>
+      (<span id="compareCount">0</span>/3)
+    </span>
+    <div class="compare-actions">
+      <button id="compareClearBtn" class="compare-btn" type="button" data-i18n="compareClear">Temizle</button>
+      <button id="compareCloseBtn" class="compare-btn" type="button">✕</button>
+    </div>
+  </div>
+  <div id="compareGrid" class="compare-grid"></div>
+</div>
+
+<!-- DETAY MODAL -->
+<div id="detailModal" class="modal">
+  <div class="modal-overlay" data-close-modal></div>
+  <div class="modal-content">
+    <button class="modal-close" data-close-modal type="button">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
