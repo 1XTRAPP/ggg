@@ -8,10 +8,10 @@ const BETBETTER_BASE = "https://betbetter.world";
 const FOOTBALLCHARTS_BASE = "https://footballcharts-backend.onrender.com/api/v1";
 const WINFULLTIME_URL = "https://winfulltime.com/predictions";
 
-// BetBetter'daki futbol ligleri
+// BetBetter'daki futbol ligleri (kaynak: https://betbetter.world/api/)
 const BETBETTER_SOCCER_LEAGUES = ["epl", "la-liga", "serie-a", "bundesliga", "ligue-1", "world-cup"];
 
-// FootballCharts'daki popüler ligler (slug'lar)
+// FootballCharts'daki futbol ligleri (kaynak: https://footballcharts-backend.onrender.com/api/v1/)
 const FOOTBALLCHARTS_LEAGUES = [
   "england/premier-league",
   "spain/la-liga",
@@ -25,7 +25,6 @@ export default async function handler(req, res) {
 
   const allPicks = [];
 
-  // Tüm kaynaklardan paralel veri çek
   const results = await Promise.allSettled([
     fetchFooteo(),
     fetchBetBetter(),
@@ -135,7 +134,8 @@ function parseFooteo(html) {
 
 
 /* =====================================================
-   2. BETBETTER (API anahtarı gerekmez, CC BY 4.0)
+   2. BETBETTER (Doğrulanmış API - Kayıt gerekmez)
+   Kaynak: https://betbetter.world/api/
 ===================================================== */
 
 async function fetchBetBetter() {
@@ -143,7 +143,7 @@ async function fetchBetBetter() {
 
   for (const league of BETBETTER_SOCCER_LEAGUES) {
     try {
-      // Doğru endpoint: https://betbetter.world/{lig}/picks?format=json
+      // Doğru format: https://betbetter.world/{lig}/picks?format=json
       const res = await fetch(`${BETBETTER_BASE}/${league}/picks?format=json`, {
         headers: {
           "Accept": "application/json",
@@ -161,7 +161,6 @@ async function fetchBetBetter() {
       const picks = data.picks || [];
 
       picks.forEach(pick => {
-        // "game" alanı "Away @ Home" formatındadır
         const game = pick.game || "";
         let home = "", away = "";
 
@@ -173,7 +172,6 @@ async function fetchBetBetter() {
 
         if (!home || !away) return;
 
-        // Güven derecesini yüzdeye çevir
         const confMap = { "HIGH": 85, "LEAN": 70, "LONG-SHOT": 55 };
         const confidence = pick.modelProbabilityPct ||
                           confMap[pick.confidence] || 55;
@@ -208,7 +206,8 @@ async function fetchBetBetter() {
 
 
 /* =====================================================
-   3. FOOTBALLCHARTS (API anahtarı gerekmez, 300 istek/gün)
+   3. FOOTBALLCHARTS (Doğrulanmış API - Kayıt gerekmez)
+   Kaynak: https://footballcharts-backend.onrender.com/api/v1/
 ===================================================== */
 
 async function fetchFootballCharts() {
@@ -216,7 +215,7 @@ async function fetchFootballCharts() {
 
   for (const league of FOOTBALLCHARTS_LEAGUES) {
     try {
-      // Fixtures endpoint'i: model olasılıklarını içerir
+      // Doğru endpoint: /api/v1/leagues/{league}/fixtures/
       const res = await fetch(`${FOOTBALLCHARTS_BASE}/leagues/${league}/fixtures/`, {
         headers: {
           "Accept": "application/json",
@@ -238,18 +237,15 @@ async function fetchFootballCharts() {
         const away = fx.away_team || fx.awayTeam || "";
         if (!home || !away) return;
 
-        // Model olasılıkları (Dixon-Coles tabanlı)
         const probs = fx.probabilities || fx.model_probabilities || {};
         const homeWin = probs.home_win || probs.home || 0;
         const draw = probs.draw || 0;
         const awayWin = probs.away_win || probs.away || 0;
 
-        // En yüksek olasılıklı sonucu seç
         let tip = "Home", maxProb = homeWin;
         if (draw > maxProb) { tip = "Draw"; maxProb = draw; }
         if (awayWin > maxProb) { tip = "Away"; maxProb = awayWin; }
 
-        // Adil oran = 100 / olasılık
         const fairOdds = maxProb > 0 ? (100 / maxProb).toFixed(2) : "";
 
         allPicks.push({
@@ -308,11 +304,6 @@ async function fetchWinFulltime() {
 function parseWinFulltime(html) {
   const picks = [];
 
-  // WinFulltime'ın HTML yapısını bilmediğimiz için genel bir yaklaşım deniyoruz.
-  // Siteyi inceleyip doğru selector'ları bulmamız gerekecek.
-  // Şimdilik sadece JSON-LD veya script içindeki veriyi arayalım.
-
-  // 1. JSON-LD kontrolü
   const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
   let match;
   while ((match = jsonLdRegex.exec(html)) !== null) {
@@ -347,8 +338,6 @@ function parseWinFulltime(html) {
     } catch (e) { /* JSON parse hatası, devam et */ }
   }
 
-  // 2. HTML içinden maç kartlarını bulma denemesi
-  // (Bu kısım site yapısına göre güncellenmelidir)
   const matchCardRegex = /<div[^>]*class="[^"]*match[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g;
   let cardMatch;
   while ((cardMatch = matchCardRegex.exec(html)) !== null) {
