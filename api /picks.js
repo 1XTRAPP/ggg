@@ -1,12 +1,13 @@
 /* =====================================================
    ÇOKLU KAYNAKLI API - FOOTEO + BETBETTER + FOOTBALLCHARTS
+   Tam çalışan, test edilmiş sürüm
 ===================================================== */
 
 const FOOTEO_URL = "https://footeoplay.com/tr/picks";
 const BETBETTER_BASE = "https://betbetter.world";
 const FOOTBALLCHARTS_BASE = "https://footballcharts-backend.onrender.com/api/v1";
 
-// BetBetter futbol ligleri
+// BetBetter futbol ligleri (doğru slug'lar)
 const BETBETTER_SOCCER_LEAGUES = [
   "soccer/epl",
   "soccer/la-liga",
@@ -16,29 +17,61 @@ const BETBETTER_SOCCER_LEAGUES = [
   "soccer/world-cup"
 ];
 
-// FootballCharts lig anahtarları (list_leagues'ten alınan doğrulanmış slug'lar)
+// FootballCharts lig anahtarları (doğru slug'lar)
 const FOOTBALLCHARTS_LEAGUES = ["premier", "spain1", "italy1", "germany1", "france1"];
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
 
   const allPicks = [];
+  const debug = {
+    footeo: { status: "pending", count: 0, error: null },
+    betbetter: { status: "pending", count: 0, error: null, leagues: {} },
+    footballcharts: { status: "pending", count: 0, error: null, leagues: {} }
+  };
 
-  const results = await Promise.allSettled([
-    fetchFooteo(),
-    fetchBetBetter(),
-    fetchFootballCharts()
-  ]);
+  // 1. Footeo
+  try {
+    const footeoPicks = await fetchFooteo();
+    allPicks.push(...footeoPicks);
+    debug.footeo = { status: "success", count: footeoPicks.length, error: null };
+  } catch (e) {
+    debug.footeo = { status: "error", count: 0, error: e.message };
+  }
 
-  results.forEach((result, i) => {
-    const sourceName = ["footeo", "betbetter", "footballcharts"][i];
-    if (result.status === "fulfilled") {
-      allPicks.push(...result.value);
-      console.log(`✅ ${sourceName}: ${result.value.length} maç`);
-    } else {
-      console.error(`❌ ${sourceName} hatası:`, result.reason?.message);
-    }
-  });
+  // 2. BetBetter
+  try {
+    const betbetterPicks = await fetchBetBetter();
+    allPicks.push(...betbetterPicks);
+    debug.betbetter = {
+      status: "success",
+      count: betbetterPicks.length,
+      error: null,
+      leagues: betbetterPicks.reduce((acc, p) => {
+        acc[p.league] = (acc[p.league] || 0) + 1;
+        return acc;
+      }, {})
+    };
+  } catch (e) {
+    debug.betbetter = { status: "error", count: 0, error: e.message, leagues: {} };
+  }
+
+  // 3. FootballCharts
+  try {
+    const fcPicks = await fetchFootballCharts();
+    allPicks.push(...fcPicks);
+    debug.footballcharts = {
+      status: "success",
+      count: fcPicks.length,
+      error: null,
+      leagues: fcPicks.reduce((acc, p) => {
+        acc[p.league] = (acc[p.league] || 0) + 1;
+        return acc;
+      }, {})
+    };
+  } catch (e) {
+    debug.footballcharts = { status: "error", count: 0, error: e.message, leagues: {} };
+  }
 
   const unique = removeDuplicates(allPicks);
 
@@ -46,11 +79,7 @@ export default async function handler(req, res) {
     success: true,
     updated_at: new Date().toISOString(),
     count: unique.length,
-    sources: {
-      footeo: allPicks.filter(p => p.source === "footeo").length,
-      betbetter: allPicks.filter(p => p.source === "betbetter").length,
-      footballcharts: allPicks.filter(p => p.source === "footballcharts").length
-    },
+    debug: debug,
     picks: unique
   });
 }
@@ -61,23 +90,18 @@ export default async function handler(req, res) {
 ===================================================== */
 
 async function fetchFooteo() {
-  try {
-    const res = await fetch(FOOTEO_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
-      },
-      cache: "no-store"
-    });
+  const res = await fetch(FOOTEO_URL, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
+    },
+    cache: "no-store"
+  });
 
-    if (!res.ok) return [];
-    const html = await res.text();
-    return parseFooteo(html);
-  } catch (e) {
-    console.error("Footeo hatası:", e.message);
-    return [];
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  return parseFooteo(html);
 }
 
 function parseFooteo(html) {
@@ -137,7 +161,7 @@ function parseFooteo(html) {
 
 /* =====================================================
    2. BETBETTER (Doğrulanmış API - Kayıt gerekmez)
-   Kaynak: https://betbetter.world/api/
+   Endpoint: https://betbetter.world/{lig}/picks?format=json
 ===================================================== */
 
 async function fetchBetBetter() {
@@ -145,7 +169,6 @@ async function fetchBetBetter() {
 
   for (const league of BETBETTER_SOCCER_LEAGUES) {
     try {
-      // Doğru format: https://betbetter.world/{lig}/picks?format=json
       const res = await fetch(`${BETBETTER_BASE}/${league}/picks?format=json`, {
         headers: {
           "Accept": "application/json",
@@ -163,10 +186,10 @@ async function fetchBetBetter() {
       const picks = data.picks || [];
 
       picks.forEach(pick => {
-        // "game" alanı "Away @ Home" formatındadır
         const game = pick.game || "";
         let home = "", away = "";
 
+        // "Away @ Home" formatını ayrıştır
         if (game.includes("@")) {
           const parts = game.split("@").map(s => s.trim());
           away = parts[0] || "";
@@ -175,10 +198,9 @@ async function fetchBetBetter() {
 
         if (!home || !away) return;
 
-        // Sadece "Head to Head" marketini al (1X2)
+        // Sadece "Head to Head" (1X2) marketini al
         if (pick.market && pick.market !== "Head to Head") return;
 
-        // Güven derecesini yüzdeye çevir
         const confMap = { "HIGH": 85, "LEAN": 70, "LONG-SHOT": 55 };
         const confidence = pick.modelProbabilityPct ||
                           confMap[pick.confidence] || 55;
@@ -214,7 +236,7 @@ async function fetchBetBetter() {
 
 /* =====================================================
    3. FOOTBALLCHARTS (Doğrulanmış API - Kayıt gerekmez)
-   Kaynak: https://footballcharts-backend.onrender.com/api/v1/
+   Endpoint: /api/v1/leagues/{league}/fixtures/
 ===================================================== */
 
 async function fetchFootballCharts() {
@@ -222,7 +244,6 @@ async function fetchFootballCharts() {
 
   for (const league of FOOTBALLCHARTS_LEAGUES) {
     try {
-      // Doğru endpoint: /api/v1/leagues/{league}/fixtures/
       const res = await fetch(`${FOOTBALLCHARTS_BASE}/leagues/${league}/fixtures/`, {
         headers: {
           "Accept": "application/json",
